@@ -17,18 +17,4 @@ CelestSystem * get_system_by_name(char *name);
 
 void free_all_celestial_systems();
 
-/**
- * @brief Initializes all celestial bodies
- */
-void init_celestial_bodies();
-
-/**
- * @brief Returns all stored celestial bodies
- */
-Body ** all_celest_bodies();
-
-
-Body * SUN();
-Body * EARTH();
-
 #endif

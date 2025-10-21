@@ -54,6 +54,8 @@ add_executable(KMAT
         tools/version_tool.c
         tools/version_tool.h
         tools/celestial_systems.c
+        tools/competition_tools.c
+        tools/competition_tools.h
 )
 
 # Platform-specific setup
