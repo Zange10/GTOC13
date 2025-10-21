@@ -3,7 +3,7 @@
 
 #include "orbitlib.h"
 
-void init_available_systems(const char *directory);
+void init_available_systems(char *directory);
 
 int get_num_available_systems();
 
