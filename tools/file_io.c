@@ -126,6 +126,7 @@ union CelestialBodyBin {
 		double mu;
 		double radius;
 		double atmo_alt;
+		double scale_height;
 		double north_pole_ra, north_pole_decl, rot_ut0;
 		double a, e, incl, raan, arg_peri, theta;
 	} t3;
@@ -181,6 +182,7 @@ union CelestialBodyBin convert_celestial_body_bin(Body *body, CelestSystem *syst
 		bin_body.t3.mu = body->mu;
 		bin_body.t3.radius = body->radius;
 		bin_body.t3.atmo_alt = body->atmo_alt;
+		bin_body.t3.scale_height = body->scale_height;
 		bin_body.t3.north_pole_ra = body->north_pole_ra;
 		bin_body.t3.north_pole_decl = body->north_pole_decl;
 		bin_body.t3.rot_ut0 = body->rot_ut0;
@@ -224,6 +226,7 @@ struct Body * convert_bin_celestial_body(union CelestialBodyBin bin_body, Celest
 		body->mu = bin_body.t3.mu;
 		body->radius = bin_body.t3.radius;
 		body->atmo_alt = bin_body.t3.atmo_alt;
+		body->scale_height = bin_body.t3.scale_height;
 		body->north_pole_ra = bin_body.t3.north_pole_ra;
 		body->north_pole_decl = bin_body.t3.north_pole_decl;
 		body->rot_ut0 = bin_body.t3.rot_ut0;

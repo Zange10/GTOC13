@@ -6,6 +6,7 @@
 #include "gui/settings.h"
 #include "tools/file_io.h"
 #include "gui/info_win_manager.h"
+#include "tools/competition_tools.h"
 
 #include <string.h>
 #include <locale.h>
@@ -622,6 +623,8 @@ void update_best_itin() {
 	curr_transfer_pa = create_itin_copy_from_arrival(pa_porkchop_points[best_show_ind].data.arrival);
 	current_date_pa = get_last(curr_transfer_pa)->date;
 	camera_zoom_to_fit_itinerary(pa_itin_preview_camera, curr_transfer_pa);
+	
+	print_itin_score(curr_transfer_pa, pa_system);
 }
 
 void analyze_departure_itins() {
