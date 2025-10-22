@@ -99,6 +99,7 @@ void init_porkchop_analyzer(GtkBuilder *builder) {
 // ITINERARY PREVIEW AND PORKCHOP CALLBACKS -----------------------------------------------
 void update_pa_porkchop_diagram() {
 	clear_screen(pa_porkchop_screen);
+	printf("Start drawing...\n");
 
 	if(pa_porkchop_points != NULL) draw_porkchop(pa_porkchop_screen->static_layer.cr, pa_porkchop_screen->width, pa_porkchop_screen->height, pa_porkchop_points, pa_num_itins, pa_last_transfer_type, pa_yaxis_type);
 	draw_screen(pa_porkchop_screen);
@@ -473,8 +474,8 @@ void update_group_overview() {
 		if(!pa_groups[group_idx].has_itin_inside_filter) continue;
 		int row = group_idx*2+3;
 		
-		char widget_text[100];
-		char tooltip_text[255];
+		char widget_text[1024];
+		char tooltip_text[1024];
 		sprintf(widget_text, "");
 		sprintf(tooltip_text, "");
 		struct ItinStep *ptr;
@@ -624,7 +625,7 @@ void update_best_itin() {
 	current_date_pa = get_last(curr_transfer_pa)->date;
 	camera_zoom_to_fit_itinerary(pa_itin_preview_camera, curr_transfer_pa);
 	
-	print_itin_score(curr_transfer_pa, pa_system);
+	print_itin_competition_score(curr_transfer_pa, pa_system);
 }
 
 void analyze_departure_itins() {
@@ -640,6 +641,7 @@ void analyze_departure_itins() {
 	pa_porkchop_points = malloc(num_itins * sizeof(struct PorkchopAnalyzerPoint));
 	for(int i = 0; i < num_itins; i++) {
 		pa_porkchop_points[i].data = create_porkchop_point(arrivals[i], get_first(arrivals[0])->body->atmo_alt + pa_dep_periapsis, arrivals[0]->body->atmo_alt + pa_arr_periapsis);
+		pa_porkchop_points[i].data.score = get_itin_competition_score(pa_porkchop_points[i].data.arrival, pa_system);
 		pa_porkchop_points[i].inside_filter = 1;
 		pa_porkchop_points[i].group = NULL;
 	}

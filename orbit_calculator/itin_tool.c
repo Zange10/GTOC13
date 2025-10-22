@@ -294,6 +294,7 @@ struct PorkchopPoint *create_porkchop_array_from_departures(struct ItinStep **de
 struct PorkchopPoint create_porkchop_point(struct ItinStep *itin, double dep_periapsis, double arr_periapsis) {
 	struct PorkchopPoint pp;
 	pp.arrival = itin;
+	pp.score = 0;
 	pp.dur = get_itinerary_duration(itin);
 
 	double vinf = mag_vec3(subtract_vec3(itin->v_arr, itin->v_body));

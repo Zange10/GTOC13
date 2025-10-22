@@ -1,5 +1,6 @@
 #include "porkchop_analyzer_tools.h"
 #include "gui/drawing.h"
+#include "tools/competition_tools.h"
 #include <stdlib.h>
 
 
@@ -52,12 +53,15 @@ void quicksort_porkchop(double *arr, int low, int high, struct PorkchopAnalyzerP
 void sort_porkchop(struct PorkchopAnalyzerPoint *pp, int num_itins, enum LastTransferType last_transfer_type) {
 	double *dvs = (double*) malloc(num_itins*sizeof(double));
 	for(int i = 0; i < num_itins; i++)  {
-		dvs[i] = pp[i].data.dv_dep + pp[i].data.dv_dsm;
-		if(last_transfer_type == TF_CAPTURE) dvs[i] += pp[i].data.dv_arr_cap;
-		if(last_transfer_type == TF_CIRC) dvs[i] += pp[i].data.dv_arr_circ;
+//		dvs[i] = pp[i].data.dv_dep + pp[i].data.dv_dsm;
+//		if(last_transfer_type == TF_CAPTURE) dvs[i] += pp[i].data.dv_arr_cap;
+//		if(last_transfer_type == TF_CIRC) dvs[i] += pp[i].data.dv_arr_circ;
+		dvs[i] = -pp[i].data.score;
+		printf("%d/%d    %f\n", i, num_itins, pp[i].data.score);
 	}
 
 	quicksort_porkchop(dvs, 0, num_itins - 1, pp);
+	
 	free(dvs);
 }
 

@@ -109,7 +109,7 @@ void *calc_itins_from_departure(void *args) {
 			double r_ratio =  r1/r0;
 			Hohmann hohmann = calc_hohmann_transfer(r0, r1, system->cb);
 			double hohmann_dur = hohmann.dur/86400;
-			double min_duration = 0.4 * hohmann_dur;
+			double min_duration = 10;//0.4 * hohmann_dur;
 			double max_duration = (4*(r_ratio-0.85)*(r_ratio-0.85)+1.5) * hohmann_dur; if(max_duration/hohmann_dur > 3) max_duration = hohmann_dur*3;
 			double max_min_duration_diff = max_duration - min_duration;
 
@@ -141,7 +141,7 @@ void *calc_itins_from_departure(void *args) {
 				}
 				
 				if(dv_dep > dv_filter.max_totdv || dv_dep > dv_filter.max_depdv) continue;
-				if(num_steps == 2 && (dv_dep + dv_arr > dv_filter.max_totdv || dv_arr > dv_filter.max_satdv)) continue;
+				if((num_steps == 2 && dv_filter.last_transfer_type != TF_FLYBY) && (dv_dep + dv_arr > dv_filter.max_totdv || dv_arr > dv_filter.max_satdv)) continue;
 
 				curr_step = get_first(curr_step);
 				curr_step->next[next_step_id] = (struct ItinStep *) malloc(sizeof(struct ItinStep));

@@ -150,6 +150,19 @@ int get_num_comp_trans(Competition_Transfer *transfer) {
 	return num_transfer;
 }
 
+void free_competition_transfer_list(Competition_Transfer ** transfers, int num_bodies) {
+	for(int i = 0; i < num_bodies; i++) {
+		Competition_Transfer *ptr = get_last_comp_trans(transfers[i]);
+		if(ptr == NULL) continue;
+		while(ptr->prev != NULL) {
+			ptr = ptr->prev;
+			free(ptr->next);
+		}
+		free(ptr);
+	}
+	free(transfers);
+}
+
 Competition_Transfer ** build_competition_transfer_from_itin(struct ItinStep *arr_step, CelestSystem *system) {
 	struct ItinStep *itin_ptr = arr_step;
 	
@@ -163,6 +176,7 @@ Competition_Transfer ** build_competition_transfer_from_itin(struct ItinStep *ar
 	transfer->r = itin_ptr->r;
 	double v_inf = mag_vec3(subtract_vec3(itin_ptr->v_arr, itin_ptr->v_body));
 	transfer->c3 = v_inf*v_inf;
+	transfer->rp = 0;
 	transfer->next = transfers[transfer->body->id];
 	transfers[transfer->body->id] = transfer;
 	if(transfer->next != NULL) transfer->next->prev = transfer;
@@ -222,6 +236,7 @@ Competition_Transfer ** build_competition_transfer_from_itin(struct ItinStep *ar
 	transfer->r = itin_ptr->r;
 	v_inf = mag_vec3(subtract_vec3(next_itin->v_dep, itin_ptr->v_body));
 	transfer->c3 = v_inf*v_inf;
+	transfer->rp = 0;
 	transfer->next = transfers[transfer->body->id];
 	transfers[transfer->body->id] = transfer;
 	if(transfer->next != NULL) transfer->next->prev = transfer;
@@ -259,7 +274,7 @@ double get_competition_body_score(Competition_Transfer * transfer) {
 	return score;
 }
 
-void print_itin_score(struct ItinStep *arr_step, CelestSystem *system) {
+double get_itin_competition_score(struct ItinStep *arr_step, CelestSystem *system) {
 	double b = is_grand_tour() ? 1.2 : 1;
 	
 	Competition_Transfer ** transfers = build_competition_transfer_from_itin(arr_step, system);
@@ -270,15 +285,53 @@ void print_itin_score(struct ItinStep *arr_step, CelestSystem *system) {
 	for(int i = 1; i < 3000; i++) {
 		score += get_competition_body_score(transfers[i]);
 	}
+
+	ptr = transfers[0];
+
+	bool was_below_0_05 = false;
+	while(ptr != NULL) {
+		if(ptr->rp/AU < 0.05) {
+			if(was_below_0_05 || ptr->rp/AU < 0.01) { free_competition_transfer_list(transfers, 3000); return 0; }
+			else was_below_0_05 = true;
+		}
+		ptr = ptr->next;
+	}
 	
+	for(int i = 1; i < 3000; i++) {
+		ptr = transfers[i];
+		while(ptr != NULL) {
+			if(ptr->rp > 0) {
+				if(ptr->rp/ptr->body->radius-1 < 0.1 || ptr->rp/ptr->body->radius-1 > 100) { free_competition_transfer_list(transfers, 3000); return 0; }
+			}
+			ptr = ptr->next;
+		}
+	}
+	
+	free_competition_transfer_list(transfers, 3000);
+	
+	return score;
+}
+
+void print_itin_competition_score(struct ItinStep *arr_step, CelestSystem *system) {
+	double b = is_grand_tour() ? 1.2 : 1;
+	
+	Competition_Transfer ** transfers = build_competition_transfer_from_itin(arr_step, system);
+	
+	double score = 0;
+	Competition_Transfer *ptr;
+	
+	for(int i = 1; i < 3000; i++) {
+		score += get_competition_body_score(transfers[i]);
+	}
+
 	printf("\n---\n");
 	for(int i = 0; i < 3000; i++) {
 		int num_trans = get_num_comp_trans(transfers[i]);
 		if(num_trans > 0) printf("%d  %d\n", i, num_trans);
 	}
-	
+
 	ptr = transfers[0];
-	
+
 	while(ptr != NULL) {
 		printf("%f  %f  %f\n", ptr->rp/AU, ptr->c3/1e9, ptr->epoch);
 		ptr = ptr->next;
@@ -290,6 +343,7 @@ void print_itin_score(struct ItinStep *arr_step, CelestSystem *system) {
 			printf("%s (%f)  %f  %f  %f\n", ptr->body->name, ptr->body->scale_height, mag_vec3(ptr->r)/AU, sqrt(ptr->c3), ptr->rp/ptr->body->radius-1);
 			ptr = ptr->next;
 		}
+		if(transfers[i] != NULL) printf("%s (%f)  %f\n", transfers[i]->body->name, transfers[i]->body->scale_height, get_competition_body_score(transfers[i]));
 	}
 	printf("--\n");
 	printf("SCORE: %f\n", score);

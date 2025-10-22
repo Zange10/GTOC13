@@ -40,6 +40,7 @@ struct Dv_Filter {
 
 struct PorkchopPoint {
 		struct ItinStep *arrival;
+		double score;
 		double dep_date, dur;
 		double dv_dep, dv_dsm, dv_arr_cap, dv_arr_circ;
 };

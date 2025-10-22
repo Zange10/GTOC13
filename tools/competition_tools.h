@@ -6,6 +6,8 @@
 
 CelestSystem * load_competition_system(char *directory);
 
-void print_itin_score(struct ItinStep *arr_step, CelestSystem *system);
+double get_itin_competition_score(struct ItinStep *arr_step, CelestSystem *system);
+
+void print_itin_competition_score(struct ItinStep *arr_step, CelestSystem *system);
 
 #endif //KMAT_COMPETITION_TOOLS_H

@@ -3,6 +3,7 @@
 #include "drawing.h"
 #include "settings.h"
 #include "math.h"
+#include "tools/competition_tools.h"
 
 
 void draw_body(Camera *camera, CelestSystem *system, Body *body, double jd_date) {
@@ -432,7 +433,8 @@ int get_porkchop_arrdate_yaxis_x() {return porkchop_arrdate_yaxis_x;}
 int get_porkchop_xaxis_y() {return porkchop_xaxis_y;}
 
 void draw_porkchop(cairo_t *cr, double width, double height, struct PorkchopAnalyzerPoint *porkchop, int num_itins, enum LastTransferType last_transfer_type, int dur0arrdate1) {
-	double dv, depdate, dur, arrdate;
+	double score, depdate, dur, arrdate;
+	CelestSystem *system = porkchop[0].data.arrival->body->orbit.cb->system;
 
 	Vector2 origin = {dur0arrdate1 ? porkchop_arrdate_yaxis_x : porkchop_dur_yaxis_x, height-porkchop_xaxis_y};
 
@@ -440,33 +442,26 @@ void draw_porkchop(cairo_t *cr, double width, double height, struct PorkchopAnal
 	while(!porkchop[first_show_ind].inside_filter) first_show_ind++;
 
 	struct PorkchopPoint pp = porkchop[first_show_ind].data;
-	double dv_sat = pp.dv_dsm;
-	if(last_transfer_type == TF_CAPTURE)	dv_sat += pp.dv_arr_cap;
-	if(last_transfer_type == TF_CIRC)		dv_sat += pp.dv_arr_circ;
 
 	double min_depdate = pp.dep_date, max_depdate = pp.dep_date;
 	double min_dur = pp.dur, max_dur = pp.dur;
 	double min_arrdate = pp.dep_date+pp.dur, max_arrdate = pp.dep_date+pp.dur;
-	double min_dv = pp.dv_dep + dv_sat;
-	double max_dv = pp.dv_dep + dv_sat;
+	double min_score = -get_itin_competition_score(pp.arrival, system);
+	double max_score = min_score;
 
 	// find min and max
 	for(int i = 1; i < num_itins; i++) {
 		if(!porkchop[i].inside_filter) continue;
 		pp = porkchop[i].data;
 
-		dv_sat = pp.dv_dsm;
-		if(last_transfer_type == TF_CAPTURE)	dv_sat += pp.dv_arr_cap;
-		if(last_transfer_type == TF_CIRC)		dv_sat += pp.dv_arr_circ;
-
-		dv = pp.dv_dep + dv_sat;
+		score = -get_itin_competition_score(pp.arrival, system);
 		depdate = pp.dep_date;
 		dur = pp.dur;
 		arrdate = pp.dep_date+pp.dur;
 		
 
-		if(dv < min_dv) min_dv = dv;
-		else if(dv > max_dv) max_dv = dv;
+		if(score < min_score) min_score = score;
+		else if(score > max_score) max_score = score;
 		if(depdate < min_depdate) min_depdate = depdate;
 		else if(depdate > max_depdate) max_depdate = depdate;
 		if(dur < min_dur) min_dur = dur;
@@ -474,6 +469,8 @@ void draw_porkchop(cairo_t *cr, double width, double height, struct PorkchopAnal
 		if(arrdate < min_arrdate) min_arrdate = arrdate;
 		else if(arrdate > max_arrdate) max_arrdate = arrdate;
 	}
+	
+	printf("min max done...\n");
 
 
 	double ddepdate = max_depdate - min_depdate;
@@ -511,24 +508,22 @@ void draw_porkchop(cairo_t *cr, double width, double height, struct PorkchopAnal
 	// Create an off-screen surface to draw porkchop all at onece
 	cairo_surface_t* buffer_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, (int) width, (int) height);
 	cairo_t* buffer_cr = cairo_create(buffer_surface);
-
+	
+	printf("Drawing...\n");
+	
 	// draw points
 	double color_bias;
 	int i = num_draw_itins-1;
 	while(i >= 0) {
 		pp = porkchop[draw_idx[i]].data;
 
-		dv_sat = pp.dv_dsm;
-		if(last_transfer_type == TF_CAPTURE)	dv_sat += pp.dv_arr_cap;
-		if(last_transfer_type == TF_CIRC)		dv_sat += pp.dv_arr_circ;
-
-		dv = pp.dv_dep + dv_sat;
+		score = -get_itin_competition_score(pp.arrival, system);
 		depdate = pp.dep_date;
 		dur = pp.dur;
 		arrdate = pp.dep_date+pp.dur;
 
 		// color coding
-		color_bias = (dv - min_dv) / (max_dv - min_dv);
+		color_bias = (score - min_score) / (max_score - min_score);
 		double r = i == 0 ? 1 : color_bias;
 		double g = i == 0 ? 0 : 1-color_bias;
 		double b = i == 0 ? 0 : 4*pow(color_bias-0.5,2);
@@ -541,6 +536,9 @@ void draw_porkchop(cairo_t *cr, double width, double height, struct PorkchopAnal
 
 		i--;
 	}
+	
+	
+	printf("Done drawing...\n");
 
 	// Copy the buffer to the main canvas and buffer cleanup
 	cairo_set_source_surface(cr, buffer_surface, 0, 0);
