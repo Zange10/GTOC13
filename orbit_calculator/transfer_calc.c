@@ -5,6 +5,7 @@
 #include <sys/time.h>
 #include <math.h>
 #include "tools/thread_pool.h"
+#include "tools/competition_tools.h"
 
 
 
@@ -83,6 +84,7 @@ void *calc_itins_from_departure(void *args) {
 		curr_step->v_body = osv_body0.v;
 		curr_step->v_dep = vec3(0, 0, 0);
 		curr_step->v_arr = vec3(0, 0, 0);
+		curr_step->had_low_perihelion = false;
 		curr_step->num_next_nodes = num_initial_transfers;
 		curr_step->prev = NULL;
 		curr_step->next = (struct ItinStep **) malloc(curr_step->num_next_nodes * sizeof(struct ItinStep *));
@@ -142,6 +144,8 @@ void *calc_itins_from_departure(void *args) {
 				
 				if(dv_dep > dv_filter.max_totdv || dv_dep > dv_filter.max_depdv) continue;
 				if((num_steps == 2 && dv_filter.last_transfer_type != TF_FLYBY) && (dv_dep + dv_arr > dv_filter.max_totdv || dv_arr > dv_filter.max_satdv)) continue;
+				Vector3 rp_heliocentric = calc_heliocentric_periapsis(tf.r0, tf.v0, tf.r1, tf.v1, system);
+				if(sq_mag_vec3(rp_heliocentric)/(AU*AU) < 0.01*0.01) continue;
 
 				curr_step = get_first(curr_step);
 				curr_step->next[next_step_id] = (struct ItinStep *) malloc(sizeof(struct ItinStep));
@@ -152,6 +156,7 @@ void *calc_itins_from_departure(void *args) {
 
 				curr_step->body = next_step_body;
 				curr_step->date = jd_arr;
+				curr_step->had_low_perihelion = sq_mag_vec3(rp_heliocentric)/(AU*AU) < 0.05*0.05;
 				curr_step->r = osv_body1.r;
 				curr_step->v_dep = tf.v0;
 				curr_step->v_arr = tf.v1;

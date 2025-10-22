@@ -9,6 +9,7 @@ struct ItinStep {
 	Vector3 r;
 	Vector3 v_arr, v_body, v_dep;
 	double date;
+	bool had_low_perihelion;
 	int num_next_nodes;
 	struct ItinStep *prev;
 	struct ItinStep **next;

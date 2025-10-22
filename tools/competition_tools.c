@@ -4,8 +4,6 @@
 #include <math.h>
 #include "orbit_calculator/itin_tool.h"
 
-#define AU 149597870691
-
 enum FILE_TYPE {COMP_FILE_PLANET, COMP_FILE_COMET, COMP_FILE_ASTEROID};
 
 void parse_celestial_body_line(const char *line, enum FILE_TYPE type, Body *new_body) {
@@ -163,6 +161,24 @@ void free_competition_transfer_list(Competition_Transfer ** transfers, int num_b
 	free(transfers);
 }
 
+Vector3 calc_heliocentric_periapsis(Vector3 r_dep, Vector3 v_dep, Vector3 r_arr, Vector3 v_arr, CelestSystem *system) {
+	Orbit orbit0 = constr_orbit_from_osv(r_dep, v_dep, system->cb);
+	Orbit orbit1 = constr_orbit_from_osv(r_arr, v_arr, system->cb);
+	
+	Vector3 r;
+	
+	if(orbit1.ta > orbit0.ta && orbit1.ta < 2*M_PI-orbit0.ta) {
+		r = r_dep;
+	} else if(orbit1.ta > orbit0.ta) {
+		r = r_arr;
+	} else {
+		orbit0.ta = 0;
+		OSV osv = osv_from_orbit(orbit0);
+		r = osv.r;
+	}
+	return r;
+}
+
 Competition_Transfer ** build_competition_transfer_from_itin(struct ItinStep *arr_step, CelestSystem *system) {
 	struct ItinStep *itin_ptr = arr_step;
 	
@@ -185,23 +201,16 @@ Competition_Transfer ** build_competition_transfer_from_itin(struct ItinStep *ar
 		transfer = malloc(sizeof(Competition_Transfer));
 		transfer->prev = NULL;
 		
-		Orbit orbit0 = constr_orbit_from_osv(itin_ptr->prev->r, itin_ptr->v_dep, itin_ptr->body->orbit.cb);
-		Orbit orbit1 = constr_orbit_from_osv(itin_ptr->r, itin_ptr->v_arr, itin_ptr->body->orbit.cb);
-		
-		if(orbit1.ta > orbit0.ta && orbit1.ta < 2*M_PI-orbit0.ta) {
-			transfer->r = itin_ptr->prev->r;
-		} else if(orbit1.ta > orbit0.ta) {
-			transfer->r = itin_ptr->r;
-		} else {
-			orbit0.ta = 0;
-			OSV osv = osv_from_orbit(orbit0);
-			transfer->r = osv.r;
-		}
+		transfer->r = calc_heliocentric_periapsis(
+				itin_ptr->prev->r, itin_ptr->v_dep,
+				itin_ptr->r,itin_ptr->v_arr,
+				system);
 		transfer->rp = mag_vec3(transfer->r);
 		
 		transfer->epoch = (itin_ptr->date+itin_ptr->prev->date);
 		transfer->body = itin_ptr->body->orbit.cb;
-		transfer->c3 = -transfer->body->mu/orbit0.a;
+		Orbit orbit = constr_orbit_from_osv(itin_ptr->prev->r, itin_ptr->v_dep, itin_ptr->body->orbit.cb);
+		transfer->c3 = -transfer->body->mu/orbit.a;
 		transfer->next = transfers[transfer->body->id];
 		transfers[transfer->body->id] = transfer;
 		if(transfer->next != NULL) transfer->next->prev = transfer;
@@ -345,9 +354,34 @@ void print_itin_competition_score(struct ItinStep *arr_step, CelestSystem *syste
 		}
 		if(transfers[i] != NULL) printf("%s (%f)  %f\n", transfers[i]->body->name, transfers[i]->body->scale_height, get_competition_body_score(transfers[i]));
 	}
+	
+	
+	ptr = transfers[0];
+	
+	bool was_below_0_05 = false;
+	while(ptr != NULL) {
+		if(ptr->rp/AU < 0.05) {
+			if(was_below_0_05 || ptr->rp/AU < 0.01) { free_competition_transfer_list(transfers, 3000); return; }
+			else was_below_0_05 = true;
+		}
+		ptr = ptr->next;
+	}
+	
+	for(int i = 1; i < 3000; i++) {
+		ptr = transfers[i];
+		while(ptr != NULL) {
+			if(ptr->rp > 0) {
+				if(ptr->rp/ptr->body->radius-1 < 0.1 || ptr->rp/ptr->body->radius-1 > 100) { free_competition_transfer_list(transfers, 3000); return; }
+			}
+			ptr = ptr->next;
+		}
+	}
+	
+	
+	
 	printf("--\n");
 	printf("SCORE: %f\n", score);
 	printf("--\n");
 	
-	free(transfers);
+	free_competition_transfer_list(transfers, 3000);
 }

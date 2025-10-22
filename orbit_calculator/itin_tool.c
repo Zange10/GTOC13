@@ -1,6 +1,7 @@
 #include "itin_tool.h"
 #include "double_swing_by.h"
 #include "tools/thread_pool.h"
+#include "tools/competition_tools.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -79,18 +80,24 @@ void find_viable_flybys(struct ItinStep *tf, CelestSystem *system, Body *next_bo
 			diff_vinf = mag_vec3(v_dep) - mag_vec3(v_init);
 
 			if(fabs(diff_vinf) < 1) {
-				if(get_flyby_periapsis(tf->v_arr, new_transfer.v0, tf->v_body, tf->body) > altatmo2radius(tf->body, 10e3)) {	// +10e3 to avoid precision errors when checking for fly-by viability later on
-					new_steps[counter] = (struct ItinStep*) malloc(sizeof(struct ItinStep));
-					new_steps[counter]->body = next_body;
-					new_steps[counter]->date = t1;
-					new_steps[counter]->r = osv_arr.r;
-					new_steps[counter]->v_dep = new_transfer.v0;
-					new_steps[counter]->v_arr = new_transfer.v1;
-					new_steps[counter]->v_body = osv_arr.v;
-					new_steps[counter]->num_next_nodes = 0;
-					new_steps[counter]->prev = tf;
-					new_steps[counter]->next = NULL;
-					counter++;
+				double rp_flyby = get_flyby_periapsis(tf->v_arr, new_transfer.v0, tf->v_body, tf->body);
+				if(rp_flyby/tf->body->radius - 1 > 0.1 && rp_flyby/tf->body->radius - 1 < 100) {
+					Vector3 rp_heliocentric = calc_heliocentric_periapsis(new_transfer.r0, new_transfer.v0, new_transfer.r1, new_transfer.v1, system);
+					double rp_sq = sq_mag_vec3(rp_heliocentric)/(AU*AU);
+					if(rp_sq > 0.05*0.05 || rp_sq > 0.01*0.01 && !tf->had_low_perihelion) {
+						new_steps[counter] = (struct ItinStep *) malloc(sizeof(struct ItinStep));
+						new_steps[counter]->body = next_body;
+						new_steps[counter]->date = t1;
+						new_steps[counter]->r = osv_arr.r;
+						new_steps[counter]->v_dep = new_transfer.v0;
+						new_steps[counter]->v_arr = new_transfer.v1;
+						new_steps[counter]->v_body = osv_arr.v;
+						new_steps[counter]->had_low_perihelion = tf->had_low_perihelion || rp_sq < 0.05*0.05;
+						new_steps[counter]->num_next_nodes = 0;
+						new_steps[counter]->prev = tf;
+						new_steps[counter]->next = NULL;
+						counter++;
+					}
 				}
 
 				if(!right_side) right_side = 1;
