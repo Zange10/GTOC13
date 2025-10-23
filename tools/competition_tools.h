@@ -14,4 +14,6 @@ void print_itin_competition_score(struct ItinStep *arr_step, CelestSystem *syste
 
 Vector3 calc_heliocentric_periapsis(Vector3 r_dep, Vector3 v_dep, Vector3 r_arr, Vector3 v_arr, CelestSystem *system);
 
+void run_competition_calc(char *load_filename, char *store_filename, CelestSystem *system);
+
 #endif //KMAT_COMPETITION_TOOLS_H

@@ -649,7 +649,11 @@ void analyze_departure_itins() {
 
 	pa_num_itins = num_itins;
 	initialize_itinerary_groups();
+	printf("Sorting...\n");
 	sort_porkchop(pa_porkchop_points, pa_num_itins, pa_last_transfer_type);
+	if(pa_num_itins > 50000) {
+		pa_num_itins = 50000;
+	}
 	update_best_itin();
 	reset_min_max_feedback(1);
 }

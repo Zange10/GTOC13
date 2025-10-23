@@ -6,6 +6,7 @@
 #include <math.h>
 #include "tools/thread_pool.h"
 #include "tools/competition_tools.h"
+#include "tools/file_io.h"
 
 
 
@@ -199,6 +200,13 @@ void *calc_itins_from_departure(void *args) {
 
 struct Itin_Calc_Results search_for_itineraries(Itin_Calc_Data calc_data) {
 	struct Itin_Calc_Results results = {NULL, 0, 0};
+	
+	ItinStepBinHeaderData header_data = {
+			3, 0, 0, 0, calc_data.seq_info.to_target.system, calc_data
+	};
+	char text[1024];
+	print_header_data_to_string(header_data, text, DATE_KERBALISO);
+	printf("%s\n", text);
 
 	struct timeval start, end;
 	double elapsed_time;

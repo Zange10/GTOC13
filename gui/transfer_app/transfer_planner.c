@@ -129,6 +129,23 @@ void update_tp_system_view() {
 
 	draw_itinerary(tp_system_camera, tp_system, curr_transfer_tp, current_date_tp);
 
+	Vector3 vecs[] = {
+			vec3(-200, 0, 0),
+			vec3(-200, 50, 50),
+			vec3(-200, 50, -50),
+			vec3(-200, -50, 50),
+			vec3(-200, -50, -50),
+	};
+	
+	for(int i = 0; i < 5; i++) vecs[i] = scale_vec3(vecs[i], 149597870691);
+	cairo_set_source_rgb(tp_system_camera->screen->static_layer.cr, 1, 0, 0);
+	for(int i = 0; i < 5; i++) {
+		Vector2 p2d = p3d_to_p2d(tp_system_camera, vecs[i]);
+		cairo_arc(tp_system_camera->screen->static_layer.cr, p2d.x, p2d.y, 2, 0, 2*M_PI);
+		cairo_fill(tp_system_camera->screen->static_layer.cr);
+	}
+	
+	
 	draw_camera_image(tp_system_camera);
 }
 

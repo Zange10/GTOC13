@@ -392,8 +392,8 @@ int calc_next_itin_to_target_step(struct ItinStep *curr_step, struct ItinSequenc
 
 
 	if(curr_step->num_next_nodes == 0) {
-		remove_step_from_itinerary(curr_step);
-		return 0;
+//		remove_step_from_itinerary(curr_step);
+		return 1;
 	}
 
 	int num_of_end_nodes = find_copy_and_store_end_nodes(curr_step, seq_info->arr_body);

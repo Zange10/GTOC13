@@ -3,6 +3,8 @@
 #include <string.h>
 #include <math.h>
 #include "orbit_calculator/itin_tool.h"
+#include "orbit_calculator/transfer_calc.h"
+#include "file_io.h"
 
 enum FILE_TYPE {COMP_FILE_PLANET, COMP_FILE_COMET, COMP_FILE_ASTEROID};
 
@@ -384,4 +386,76 @@ void print_itin_competition_score(struct ItinStep *arr_step, CelestSystem *syste
 	printf("--\n");
 	
 	free_competition_transfer_list(transfers, 3000);
+}
+
+void run_competition_calc(char *load_filename, char *store_filename, CelestSystem *system) {
+	struct Itin_Calc_Data ic_calc_data;
+	struct Itin_Calc_Results ic_results;
+	
+	FILE *file = fopen(load_filename, "r");
+	if (!file) {
+		perror("Failed to open file");
+		return;
+	}
+	char line[256];  // Buffer for each line
+	// skip first line
+	fgets(line, sizeof(line), file);
+	fgets(line, sizeof(line), file);
+	
+	int dep_body_id, arr_body_id;
+	
+	sscanf(line,
+		   "%lf,%lf,%lf,%lf,%lf,%d,%d",
+		   &ic_calc_data.jd_min_dep,
+		   &ic_calc_data.jd_max_dep,
+		   &ic_calc_data.jd_max_arr,
+		   &ic_calc_data.max_duration,
+		   &ic_calc_data.dv_filter.max_totdv,
+		   &dep_body_id,
+		   &arr_body_id
+	);
+	
+	
+	Body **fly_by_bodies = malloc(system->num_bodies * sizeof(Body*));
+	fgets(line, sizeof(line), file);
+	int idx = 0;
+	while(fgets(line, sizeof(line), file)) {
+		int body_id;
+		sscanf(line, "%d", &body_id);
+		fly_by_bodies[idx++] = get_body_by_id(body_id, system);
+	}
+	
+	fclose(file);
+	
+	
+	ic_calc_data.dv_filter.max_depdv = ic_calc_data.dv_filter.max_totdv;
+	ic_calc_data.dv_filter.max_satdv = ic_calc_data.dv_filter.max_totdv;
+	ic_calc_data.dv_filter.last_transfer_type = TF_FLYBY;
+	
+	ic_calc_data.dv_filter.dep_periapsis = 1e9;
+	ic_calc_data.dv_filter.arr_periapsis = 1e9;
+	
+	ic_calc_data.num_deps_per_date = 500;
+	ic_calc_data.step_dep_date = 1;
+	ic_calc_data.max_num_waiting_orbits = 0;
+	
+	struct ItinSequenceInfoToTarget seq_info = {
+			.system = system,
+			.dep_body = get_body_by_id(dep_body_id, system),
+			.arr_body = get_body_by_id(arr_body_id, system),
+			.num_flyby_bodies = idx,
+	};
+	
+	seq_info.flyby_bodies = fly_by_bodies;
+	ic_calc_data.seq_info.to_target = seq_info;
+	
+	ic_results = search_for_itineraries(ic_calc_data);
+	
+	
+	if(ic_results.departures == NULL || ic_results.num_deps == 0) return;
+	store_itineraries_in_bfile(ic_results.departures, ic_results.num_nodes, ic_results.num_deps, ic_results.num_itins, ic_calc_data, system, store_filename, get_current_bin_file_type());
+	for(int i = 0; i < ic_results.num_deps; i++) free_itinerary(ic_results.departures[i]);
+	free(ic_results.departures);
+	free(fly_by_bodies);
+	if(ic_results.num_deps == 0) printf("No itineraries found!");
 }

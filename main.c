@@ -1,4 +1,5 @@
 #include "tools/tool_funcs.h"
+#include "tools/competition_tools.h"
 #include "gui/gui_manager.h"
 #include <math.h>
 
@@ -29,8 +30,27 @@ int main() {
 	init_available_systems("../Celestial_Systems/");
 	
 	print_celestial_system(get_available_systems()[0]);
+	
+	int selection;
+    char title[] = "CHOOSE PROGRAM:";
+    char options[] = "Exit; GUI; Run from file";
+    char question[] = "Program: ";
 
-	start_gui("../GUI/GUI.glade");
+    do {
+        selection = user_selection(title, options, question);
+
+        switch (selection) {
+        case 1:
+			start_gui("../GUI/GUI.glade");
+            break;
+        case 2:
+			run_competition_calc("../Queue/example.txt", "../Itineraries/test.itins", get_available_systems()[0]);
+            break;
+        default:
+            break;
+        }
+    } while(selection != 0);
+	
 
 	free_all_celestial_systems();
     return 0;
