@@ -1,0 +1,8 @@
+MinDep,MaxDep,DepDateStep,MaxArr,MaxDur,MaxDv,CalcType
+0,30000,1000,50000,50000,1E9,2
+Sequence:
+10
+8
+2
+9
+3

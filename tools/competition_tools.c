@@ -404,7 +404,7 @@ void print_itin_competition_score(struct ItinStep *arr_step, CelestSystem *syste
 }
 
 void run_competition_calc(char *load_filename, char *store_filename, CelestSystem *system) {
-	struct Itin_Calc_Data ic_calc_data;
+	struct Itin_Calc_Data calc_data;
 	struct Itin_Calc_Results ic_results;
 	
 	FILE *file = fopen(load_filename, "r");
@@ -417,60 +417,197 @@ void run_competition_calc(char *load_filename, char *store_filename, CelestSyste
 	fgets(line, sizeof(line), file);
 	fgets(line, sizeof(line), file);
 	
-	int dep_body_id, arr_body_id;
+	enum CompetitionCalcType {CCT_ItinFromT0, CCT_ItinFromFb, CCT_Sequence};
+	
+	int dep_body_id, arr_body_id, calc_type;
 	
 	sscanf(line,
-		   "%lf,%lf,%lf,%lf,%lf,%lf,%d,%d",
-		   &ic_calc_data.jd_min_dep,
-		   &ic_calc_data.jd_max_dep,
-		   &ic_calc_data.step_dep_date,
-		   &ic_calc_data.jd_max_arr,
-		   &ic_calc_data.max_duration,
-		   &ic_calc_data.dv_filter.max_totdv,
-		   &dep_body_id,
-		   &arr_body_id
+		   "%lf,%lf,%lf,%lf,%lf,%lf,%d",
+		   &calc_data.jd_min_dep,
+		   &calc_data.jd_max_dep,
+		   &calc_data.step_dep_date,
+		   &calc_data.jd_max_arr,
+		   &calc_data.max_duration,
+		   &calc_data.dv_filter.max_totdv,
+		   &calc_type
 	);
 	
+	Body **fly_by_bodies;
+	int counter = 0;
 	
-	Body **fly_by_bodies = malloc(system->num_bodies * sizeof(Body*));
-	fgets(line, sizeof(line), file);
-	int idx = 0;
-	while(fgets(line, sizeof(line), file)) {
-		int body_id;
-		sscanf(line, "%d", &body_id);
-		fly_by_bodies[idx++] = get_body_by_id(body_id, system);
+	switch(calc_type) {
+		case CCT_ItinFromT0:
+			fgets(line, sizeof(line), file);
+			fgets(line, sizeof(line), file);
+			sscanf(line, "%d,%d", &dep_body_id, &arr_body_id);
+			
+			fly_by_bodies = malloc(system->num_bodies * sizeof(Body*));
+			fgets(line, sizeof(line), file);
+			while(fgets(line, sizeof(line), file)) {
+				int body_id;
+				sscanf(line, "%d", &body_id);
+				fly_by_bodies[counter++] = get_body_by_id(body_id, system);
+			}
+			
+			
+			struct ItinSequenceInfoToTarget seq_info_tt = {
+					.system = system,
+					.dep_body = get_body_by_id(dep_body_id, system),
+					.arr_body = get_body_by_id(arr_body_id, system),
+					.num_flyby_bodies = counter,
+			};
+			
+			seq_info_tt.flyby_bodies = fly_by_bodies;
+			calc_data.seq_info.to_target = seq_info_tt;
+			break;
+		case CCT_ItinFromFb:
+			break;
+		case CCT_Sequence:
+			fly_by_bodies = malloc(100 * sizeof(Body*));
+			fgets(line, sizeof(line), file);
+			while(fgets(line, sizeof(line), file)) {
+				int body_id;
+				sscanf(line, "%d", &body_id);
+				fly_by_bodies[counter++] = get_body_by_id(body_id, system);
+			}
+			
+			
+			struct ItinSequenceInfoSpecItin seq_info_spec;
+			seq_info_spec.type = ITIN_SEQ_INFO_SPEC_SEQ;
+			seq_info_spec.num_steps = counter;
+			seq_info_spec.bodies = fly_by_bodies;
+			seq_info_spec.system = system;
+			calc_data.seq_info.spec_seq = seq_info_spec;
+			
 	}
 	
 	fclose(file);
 	
 	
-	ic_calc_data.dv_filter.max_depdv = ic_calc_data.dv_filter.max_totdv;
-	ic_calc_data.dv_filter.max_satdv = ic_calc_data.dv_filter.max_totdv;
-	ic_calc_data.dv_filter.last_transfer_type = TF_FLYBY;
+	calc_data.dv_filter.max_depdv = calc_data.dv_filter.max_totdv;
+	calc_data.dv_filter.max_satdv = calc_data.dv_filter.max_totdv;
+	calc_data.dv_filter.last_transfer_type = TF_FLYBY;
 	
-	ic_calc_data.dv_filter.dep_periapsis = 1e9;
-	ic_calc_data.dv_filter.arr_periapsis = 1e9;
+	calc_data.dv_filter.dep_periapsis = 1e9;
+	calc_data.dv_filter.arr_periapsis = 1e9;
 	
-	ic_calc_data.num_deps_per_date = 500;
-	ic_calc_data.max_num_waiting_orbits = 0;
+	calc_data.num_deps_per_date = 500;
+	calc_data.max_num_waiting_orbits = 0;
 	
-	struct ItinSequenceInfoToTarget seq_info = {
-			.system = system,
-			.dep_body = get_body_by_id(dep_body_id, system),
-			.arr_body = get_body_by_id(arr_body_id, system),
-			.num_flyby_bodies = idx,
-	};
-	
-	seq_info.flyby_bodies = fly_by_bodies;
-	ic_calc_data.seq_info.to_target = seq_info;
-	
-	ic_results = search_for_itineraries(ic_calc_data);
+	ic_results = search_for_itineraries(calc_data);
 	
 	
 	if(ic_results.departures == NULL || ic_results.num_deps == 0) return;
-	store_itineraries_in_bfile(ic_results.departures, ic_results.num_nodes, ic_results.num_deps, ic_results.num_itins, ic_calc_data, system, store_filename, get_current_bin_file_type());
+	store_itineraries_in_bfile(ic_results.departures, ic_results.num_nodes, ic_results.num_deps, ic_results.num_itins, calc_data, system, store_filename, get_current_bin_file_type());
 	for(int i = 0; i < ic_results.num_deps; i++) free_itinerary(ic_results.departures[i]);
 	free(ic_results.departures);
 	free(fly_by_bodies);
 	if(ic_results.num_deps == 0) printf("No itineraries found!");
+}
+
+void store_competition_flyby_arc_arrival(FILE *file, struct ItinStep *step) {
+	Vector3 r = scale_vec3(step->r,1e-3);
+	Vector3 v = scale_vec3(step->v_arr,1e-3);
+	Vector3 v_inf = subtract_vec3(v, scale_vec3(step->v_body, 1e-3));
+	fprintf(file,
+			"%d, "		// body_id: unique identifier for the body
+			"%d, "		// flag: status or type flag
+			"%lf, "		// epoch: seconds since reference epoch
+			"%.9lf, "		// pos_x: position in X-axis (km)
+			"%.9lf, "		// pos_y: position in Y-axis (km)
+			"%.9lf, "		// pos_z: position in Z-axis (km)
+			"%.9lf, "		// vel_x: velocity along X-axis (km/s)
+			"%.9lf, "		// vel_y: velocity along Y-axis (km/s)
+			"%.9lf, "		// vel_z: velocity along Z-axis (km/s)
+			"%.9lf, "		// control_x: control input along X-axis
+			"%.9lf, "		// control_y: control input along Y-axis
+			"%.9lf\n",	// control_z: control input along Z-axis
+			step->body->id, 1, step->date*86400, r.x, r.y, r.z, v.x, v.y, v.z, v_inf.x, v_inf.y, v_inf.z
+	);
+}
+
+void store_competition_flyby_arc_departure(FILE *file, struct ItinStep *step0) {
+	if(step0 == NULL || step0->next == NULL) return;
+	struct ItinStep *step1 = step0->next[0];
+	Vector3 r = scale_vec3(step0->r,1e-3);
+	Vector3 v = scale_vec3(step1->v_dep,1e-3);
+	Vector3 v_inf = subtract_vec3(v, scale_vec3(step0->v_body, 1e-3));
+	fprintf(file,
+			"%d, "		// body_id: unique identifier for the body
+			"%d, "		// flag: status or type flag
+			"%lf, "		// epoch: seconds since reference epoch
+			"%.9lf, "		// pos_x: position in X-axis (km)
+			"%.9lf, "		// pos_y: position in Y-axis (km)
+			"%.9lf, "		// pos_z: position in Z-axis (km)
+			"%.9lf, "		// vel_x: velocity along X-axis (km/s)
+			"%.9lf, "		// vel_y: velocity along Y-axis (km/s)
+			"%.9lf, "		// vel_z: velocity along Z-axis (km/s)
+			"%.9lf, "		// control_x: control input along X-axis
+			"%.9lf, "		// control_y: control input along Y-axis
+			"%.9lf\n",	// control_z: control input along Z-axis
+			step0->body->id, 1, step0->date*86400, r.x, r.y, r.z, v.x, v.y, v.z, v_inf.x, v_inf.y, v_inf.z
+	);
+}
+
+void store_competition_conic_arc(FILE *file, struct ItinStep *step0) {
+	if(step0 == NULL || step0->next == NULL) return;
+	struct ItinStep *step1 = step0->next[0];
+	Vector3 r = scale_vec3(step0->r,1e-3);
+	Vector3 v = scale_vec3(step1->v_dep,1e-3);
+	fprintf(file,
+			"%d, "		// body_id: unique identifier for the body
+			"%d, "		// flag: status or type flag
+			"%lf, "		// epoch: seconds since reference epoch
+			"%.9lf, "		// pos_x: position in X-axis (km)
+			"%.9lf, "		// pos_y: position in Y-axis (km)
+			"%.9lf, "		// pos_z: position in Z-axis (km)
+			"%.9lf, "		// vel_x: velocity along X-axis (km/s)
+			"%.9lf, "		// vel_y: velocity along Y-axis (km/s)
+			"%.9lf, "		// vel_z: velocity along Z-axis (km/s)
+			"%lf, "		// control_x: control input along X-axis
+			"%lf, "		// control_y: control input along Y-axis
+			"%lf\n",	// control_z: control input along Z-axis
+			0, 0, step0->date*86400, r.x, r.y, r.z, v.x, v.y, v.z, 0.0, 0.0, 0.0
+	);
+	r = scale_vec3(step1->r,1e-3);
+	v = scale_vec3(step1->v_arr,1e-3);
+	fprintf(file,
+			"%d, "		// body_id: unique identifier for the body
+			"%d, "		// flag: status or type flag
+			"%lf, "		// epoch: time or timestamp (e.g., seconds since reference epoch)
+			"%lf, "		// pos_x: position in X-axis (km)
+			"%lf, "		// pos_y: position in Y-axis (km)
+			"%lf, "		// pos_z: position in Z-axis (km)
+			"%lf, "		// vel_x: velocity along X-axis (km/s)
+			"%lf, "		// vel_y: velocity along Y-axis (km/s)
+			"%lf, "		// vel_z: velocity along Z-axis (km/s)
+			"%lf, "		// control_x: control input along X-axis
+			"%lf, "		// control_y: control input along Y-axis
+			"%lf\n",	// control_z: control input along Z-axis
+			0, 0, step1->date*86400, r.x, r.y, r.z, v.x, v.y, v.z, 0.0, 0.0, 0.0
+	);
+}
+
+void store_competition_solution(char *filepath, struct ItinStep *step) {
+	step = get_first(step);
+	
+	// Check if the string ends with ".itin"
+	if (strlen(filepath) >= 3 && strcmp(filepath + strlen(filepath) - 4, ".csv") != 0) {
+		// If not, append ".itin" to the string
+		strcat(filepath, ".csv");
+	}
+	
+	FILE *file;
+	file = fopen(filepath,"w");
+	
+	fprintf(file,"#body_id, flag, epoch, pos_x, pos_y, pos_z, vel_x, vel_y, vel_z, control_x, control_y, control_z\n");
+	while(step->next != NULL) {
+		if(step->prev != NULL) store_competition_flyby_arc_arrival(file, step);
+		store_competition_flyby_arc_departure(file, step);
+		store_competition_conic_arc(file, step);
+		step = step->next[0];
+	}
+	store_competition_flyby_arc_arrival(file, step);
+	
+	fclose(file);
 }

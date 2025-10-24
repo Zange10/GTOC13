@@ -1,0 +1,15 @@
+MinDep,MaxDep,DepDateStep,MaxArr,MaxDur,MaxDv,DepBodyID,ArrBodyID,CalcType
+0,10000,1000,15000,10000,1E9,10,1000,1
+Initial Flyby (BodyID,date,v_arr_x,v_arr_y,v_arr_z):
+4,1000,...
+Fly-by Bodies:
+2
+3
+4
+5
+6
+7
+8
+9
+10
+1000

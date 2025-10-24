@@ -16,4 +16,6 @@ Vector3 calc_heliocentric_periapsis(Vector3 r_dep, Vector3 v_dep, Vector3 r_arr,
 
 void run_competition_calc(char *load_filename, char *store_filename, CelestSystem *system);
 
+void store_competition_solution(char *filepath, struct ItinStep *step);
+
 #endif //KMAT_COMPETITION_TOOLS_H

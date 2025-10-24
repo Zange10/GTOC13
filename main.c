@@ -44,7 +44,22 @@ int main() {
 			start_gui("../GUI/GUI.glade");
             break;
         case 2:
-			run_competition_calc("../Queue/example.txt", "../Itineraries/test.itins", get_available_systems()[0]);
+			char title2[] = "CHOOSE PROGRAM:";
+			char options2[] = "Back; Itin from T0; Itin from Fly-by; Sequence";
+			char question2[] = "Program: ";
+			selection = user_selection(title2, options2, question2);
+			switch(selection) {
+				case 1:
+					run_competition_calc("../Queue/exampleItineraryFromT0.txt", "../Itineraries/test.itins", get_available_systems()[0]);
+					break;
+				case 2:
+					run_competition_calc("../Queue/exampleItineraryFromFb.txt", "../Itineraries/test.itins", get_available_systems()[0]);
+					break;
+				case 3:
+					run_competition_calc("../Queue/exampleSequence.txt", "../Itineraries/test.itins", get_available_systems()[0]);
+					break;
+				default: break;
+			}
             break;
         default:
             break;

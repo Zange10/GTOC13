@@ -120,6 +120,7 @@ void update_tp_system_view() {
 	for(int i = 0; i < tp_system->num_bodies; i++) {
 		if(!body_show_status_tp[i]) continue;
 		draw_body(tp_system_camera, tp_system, tp_system->bodies[i], current_date_tp);
+		if(tp_system->bodies[i]->id > 1000) continue;
 		struct Orbit orbit = tp_system->bodies[i]->orbit;
 		if(tp_system->prop_method == EPHEMS) {
 			struct OSV body_osv = osv_from_ephem(tp_system->bodies[i]->ephem, tp_system->bodies[i]->num_ephems, current_date_tp, tp_system->cb);
@@ -733,8 +734,12 @@ G_MODULE_EXPORT void on_save_itinerary(GtkWidget* widget, gpointer data) {
 	if(first == NULL || !is_valid_itinerary(get_last(curr_transfer_tp))) return;
 
 	char filepath[255];
-	if(!get_path_from_file_chooser(filepath, ".itin", GTK_FILE_CHOOSER_ACTION_SAVE, "")) return;
-	store_single_itinerary_in_bfile(first, tp_system, filepath);
+	if(get_path_from_file_chooser(filepath, ".itin", GTK_FILE_CHOOSER_ACTION_SAVE, "")) {
+		store_single_itinerary_in_bfile(first, tp_system, filepath);
+	}
+	if(get_path_from_file_chooser(filepath, ".csv", GTK_FILE_CHOOSER_ACTION_SAVE, "")) {
+		store_competition_solution(filepath, first);
+	}
 }
 
 G_MODULE_EXPORT void on_load_itinerary(GtkWidget* widget, gpointer data) {
