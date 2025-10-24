@@ -66,7 +66,7 @@ void *calc_itins_from_departure(void *args) {
 	int index = get_incr_thread_counter(0);
 	// increase finished counter to 1 (first finished should reflect a num of finished of 1)
 
-	double jd_dep = jd_min_dep + index;
+	double jd_dep = jd_min_dep + index*calc_data->step_dep_date;
 	struct ItinStep *curr_step;
 	OSV osv_body0, osv_body1;
 
@@ -114,6 +114,7 @@ void *calc_itins_from_departure(void *args) {
 			double hohmann_dur = hohmann.dur/86400;
 			double min_duration = 10;//0.4 * hohmann_dur;
 			double max_duration = (4*(r_ratio-0.85)*(r_ratio-0.85)+1.5) * hohmann_dur; if(max_duration/hohmann_dur > 3) max_duration = hohmann_dur*3;
+			if(jd_dep + max_duration >  jd_max_arr) max_duration = jd_max_arr-jd_dep;
 			double max_min_duration_diff = max_duration - min_duration;
 
 			for(int j = 0; j < NUM_INITIAL_TRANSFERS_PER_BODY; j++) {
@@ -147,7 +148,20 @@ void *calc_itins_from_departure(void *args) {
 				if((num_steps == 2 && dv_filter.last_transfer_type != TF_FLYBY) && (dv_dep + dv_arr > dv_filter.max_totdv || dv_arr > dv_filter.max_satdv)) continue;
 				Vector3 rp_heliocentric = calc_heliocentric_periapsis(tf.r0, tf.v0, tf.r1, tf.v1, system);
 				if(sq_mag_vec3(rp_heliocentric)/(AU*AU) < 0.01*0.01) continue;
-
+				
+				// check if it can reach from (-200Au, 0, 0)
+				double v_inf_sq = sq_mag_vec3(subtract_vec3(tf.v0, osv_body0.v));
+				double v_inf_x = sqrt(- osv_body0.v.y*osv_body0.v.y - osv_body0.v.z*osv_body0.v.z + v_inf_sq);
+				Vector3 v_arr0 = vec3(v_inf_x+osv_body0.v.x, 0, 0);
+				double initial_fly_by_rp = get_flyby_periapsis(v_arr0, tf.v0, osv_body0.v, dep_body);
+//				printf("%s  radius: %f\n", next_step_body->name, initial_fly_by_rp/dep_body->radius-1);
+				if(initial_fly_by_rp/dep_body->radius-1 < 0.1 || initial_fly_by_rp/dep_body->radius-1 > 100) continue;
+				// check if it can start from (-200Au, 0, 0) after t0
+				OSV new_osv = propagate_osv_ta((OSV) {osv_body0.r, v_arr0}, system->cb,-angle_vec3_vec3(osv_body0.r, vec3(-200*AU, osv_body0.r.y, osv_body0.r.z)));
+//				printf("date: %f\n", jd_dep - (mag_vec3(subtract_vec3(osv_body0.r, new_osv.r))/mag_vec3(new_osv.v))/86400.0);
+				if(jd_dep - (mag_vec3(subtract_vec3(osv_body0.r, new_osv.r))/mag_vec3(new_osv.v))/86400.0 < 0) continue;
+				
+				
 				curr_step = get_first(curr_step);
 				curr_step->next[next_step_id] = (struct ItinStep *) malloc(sizeof(struct ItinStep));
 				curr_step->next[next_step_id]->prev = curr_step;
@@ -190,10 +204,10 @@ void *calc_itins_from_departure(void *args) {
 		}
 
 		double progress = get_incr_thread_counter(1)+1;	// +1 because it gets the last value, not the incremented value
-		show_progress("Transfer Calculation progress", progress, jd_diff);
+		show_progress("Transfer Calculation progress", progress, jd_diff/calc_data->step_dep_date);
 		incr_thread_counter_by_amount(2, get_number_of_itineraries(get_first(curr_step)));
 		index = get_incr_thread_counter(0);
-		jd_dep = jd_min_dep + index;
+		jd_dep = jd_min_dep + index*calc_data->step_dep_date;
 	}
 	return NULL;
 }

@@ -6,6 +6,7 @@
 #include "gui/css_loader.h"
 #include "tools/file_io.h"
 #include "gui/info_win_manager.h"
+#include "tools/competition_tools.h"
 
 #include <string.h>
 #include <gtk/gtk.h>
@@ -127,7 +128,49 @@ void update_tp_system_view() {
 		draw_orbit(tp_system_camera, orbit);
 	}
 
-	draw_itinerary(tp_system_camera, tp_system, curr_transfer_tp, current_date_tp);
+	if(curr_transfer_tp != NULL) {
+		if(curr_transfer_tp->next != NULL) {
+			struct ItinStep *ptr = get_first(curr_transfer_tp);
+			struct ItinStep *new_step = malloc(sizeof(struct ItinStep));
+			new_step->body = NULL;
+			new_step->next = malloc(sizeof(struct ItinStep *));
+			new_step->next[0] = ptr;
+			new_step->prev = NULL;
+			new_step->had_low_perihelion = false;
+			new_step->num_next_nodes = 1;
+			
+			ptr->prev = new_step;
+			double v_inf_sq = sq_mag_vec3(subtract_vec3(ptr->v_body, ptr->next[0]->v_dep));
+			double v_inf_x = sqrt(-ptr->v_body.y*ptr->v_body.y - ptr->v_body.z*ptr->v_body.z + v_inf_sq);
+			ptr->v_arr = vec3(v_inf_x + ptr->v_body.x, 0, 0);
+			printf("angle: %f\n", rad2deg(angle_vec3_vec3(ptr->r, vec3(-200*AU, ptr->r.y, ptr->r.z))));
+			OSV new_osv = propagate_osv_ta((OSV) {ptr->r, ptr->v_arr}, ptr->body->orbit.cb,
+										   -angle_vec3_vec3(ptr->r, vec3(-200*AU, ptr->r.y, ptr->r.z)));
+			new_step->r = new_osv.r;
+			new_step->date = ptr->date - (mag_vec3(subtract_vec3(ptr->r, new_step->r))/mag_vec3(ptr->v_arr))/86400.0;
+			ptr->v_dep = new_osv.v;
+			printf("date: %f\n", ptr->date - new_step->date);
+			print_vec3(new_step->r);
+			print_vec3(ptr->v_dep);
+			
+			printf("%f   %f\n", mag_vec3(subtract_vec3(ptr->v_body, ptr->next[0]->v_dep)),
+				   mag_vec3(subtract_vec3(ptr->v_body, ptr->v_arr)));
+			printf("%f   %f\n", sqrt(v_inf_sq),
+				   sqrt(v_inf_x*v_inf_x + ptr->v_body.y*ptr->v_body.y + ptr->v_body.z*ptr->v_body.z));
+			printf("%f   %f\n",
+				   get_flyby_periapsis(ptr->v_arr, ptr->next[0]->v_dep, ptr->v_body, ptr->body)/ptr->body->radius - 1,
+				   get_flyby_periapsis(ptr->v_arr, ptr->next[0]->v_dep, ptr->v_body, ptr->body)/1e3);
+			
+			
+			draw_itinerary(tp_system_camera, tp_system, curr_transfer_tp, current_date_tp);
+			
+			free(ptr->prev->next);
+			free(ptr->prev);
+			ptr->prev = NULL;
+		} else {
+			draw_itinerary(tp_system_camera, tp_system, curr_transfer_tp, current_date_tp);
+		}
+	}
 
 	Vector3 vecs[] = {
 			vec3(-200, 0, 0),
@@ -243,8 +286,10 @@ double calc_periapsis_height_tp() {
 
 void update_itinerary() {
 	if(curr_transfer_tp != NULL) {
-		tp_dep_periapsis = get_first(curr_transfer_tp)->body->atmo_alt + 50e3;
-		tp_arr_periapsis = get_last(curr_transfer_tp)->body->atmo_alt + 50e3;
+//		tp_dep_periapsis = get_first(curr_transfer_tp)->body->atmo_alt + 50e3;
+//		tp_arr_periapsis = get_last(curr_transfer_tp)->body->atmo_alt + 50e3;
+		tp_dep_periapsis = 1e9;
+		tp_arr_periapsis = 1e9;
 	}
 	update_itin_body_osvs(get_first(curr_transfer_tp), tp_system);
 	calc_itin_v_vectors_from_dates_and_r(get_first(curr_transfer_tp), tp_system);

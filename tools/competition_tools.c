@@ -261,27 +261,41 @@ bool is_grand_tour() {
 	return false;
 }
 
-double get_competition_body_score(Competition_Transfer * transfer) {
+
+double calc_seasonal_penalty(Competition_Transfer * transfer) {
+	double s = 0;
+	Competition_Transfer *prev_ptr = transfer->prev;
+	while(prev_ptr != NULL) {
+		Vector3 r_i = norm_vec3(transfer->r);
+		Vector3 r_j = norm_vec3(prev_ptr->r);
+		double acosd = rad2deg(acos(dot_vec3(r_i, r_j)));
+		s += exp(-(acosd*acosd)/50);
+		prev_ptr = prev_ptr->prev;
+	}
+	return 0.1 + (0.9/(1+10*s));
+}
+
+double calc_flyby_velocity_penalty(Competition_Transfer * transfer) {
+	double v_inf = sqrt(transfer->c3)/1e3;
+	return 0.2 + exp(-v_inf/13) / (1+exp(-5*(v_inf-1.5)));;
+}
+
+double get_competition_flyby_score(Competition_Transfer * transfer) {
 	if(transfer == 0) return 0;
 	double w = transfer->body->scale_height;
+	double s = calc_seasonal_penalty(transfer);
+	double f = calc_flyby_velocity_penalty(transfer);
+	return w*s*f;
+}
+
+
+double get_competition_body_score(Competition_Transfer * transfer) {
+	if(transfer == 0) return 0;
 	double score = 0;
 	while(transfer != NULL) {
-		double v_inf = sqrt(transfer->c3)/1e3;
-		double s_sum = 0;
-		Competition_Transfer *prev_ptr = transfer->prev;
-		while(prev_ptr != NULL) {
-			Vector3 r_i = norm_vec3(transfer->r);
-			Vector3 r_j = norm_vec3(prev_ptr->r);
-			double acosd = rad2deg(acos(dot_vec3(r_i, r_j)));
-			s_sum += exp(-(acosd*acosd)/50);
-			prev_ptr = prev_ptr->prev;
-		}
-		double s = 0.1 + (0.9/(1+10*s_sum));
-		double f = 0.2 + exp(-v_inf/13) / (1+exp(-5*(v_inf-1.5)));
-		score += s*f;
+		score += get_competition_flyby_score(transfer);
 		transfer = transfer->next;
 	}
-	score *= w;
 	return score;
 }
 
@@ -351,10 +365,11 @@ void print_itin_competition_score(struct ItinStep *arr_step, CelestSystem *syste
 	for(int i = 1; i < 3000; i++) {
 		ptr = transfers[i];
 		while(ptr != NULL) {
-			printf("%s (%f)  %f  %f  %f\n", ptr->body->name, ptr->body->scale_height, mag_vec3(ptr->r)/AU, sqrt(ptr->c3), ptr->rp/ptr->body->radius-1);
+			printf("%s  %f  %f  %f  | %f  s:%f  f:%f  w:%f |\n", ptr->body->name, mag_vec3(ptr->r)/AU, sqrt(ptr->c3), ptr->rp/ptr->body->radius-1,
+				   get_competition_flyby_score(ptr), calc_seasonal_penalty(ptr), calc_flyby_velocity_penalty(ptr), ptr->body->scale_height);
 			ptr = ptr->next;
 		}
-		if(transfers[i] != NULL) printf("%s (%f)  %f\n", transfers[i]->body->name, transfers[i]->body->scale_height, get_competition_body_score(transfers[i]));
+		if(transfers[i] != NULL) printf("%s:  %f\n", transfers[i]->body->name, get_competition_body_score(transfers[i]));
 	}
 	
 	
@@ -405,9 +420,10 @@ void run_competition_calc(char *load_filename, char *store_filename, CelestSyste
 	int dep_body_id, arr_body_id;
 	
 	sscanf(line,
-		   "%lf,%lf,%lf,%lf,%lf,%d,%d",
+		   "%lf,%lf,%lf,%lf,%lf,%lf,%d,%d",
 		   &ic_calc_data.jd_min_dep,
 		   &ic_calc_data.jd_max_dep,
+		   &ic_calc_data.step_dep_date,
 		   &ic_calc_data.jd_max_arr,
 		   &ic_calc_data.max_duration,
 		   &ic_calc_data.dv_filter.max_totdv,
@@ -436,7 +452,6 @@ void run_competition_calc(char *load_filename, char *store_filename, CelestSyste
 	ic_calc_data.dv_filter.arr_periapsis = 1e9;
 	
 	ic_calc_data.num_deps_per_date = 500;
-	ic_calc_data.step_dep_date = 1;
 	ic_calc_data.max_num_waiting_orbits = 0;
 	
 	struct ItinSequenceInfoToTarget seq_info = {
