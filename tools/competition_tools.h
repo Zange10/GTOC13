@@ -18,4 +18,6 @@ void run_competition_calc(char *load_filename, char *store_filename, CelestSyste
 
 void store_competition_solution(char *filepath, struct ItinStep *step);
 
+struct ItinStep * attach_initial_competition_state(struct ItinStep *step);
+
 #endif //KMAT_COMPETITION_TOOLS_H

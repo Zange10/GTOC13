@@ -132,42 +132,15 @@ void update_tp_system_view() {
 	if(curr_transfer_tp != NULL) {
 		if(curr_transfer_tp->next != NULL) {
 			struct ItinStep *ptr = get_first(curr_transfer_tp);
-			struct ItinStep *new_step = malloc(sizeof(struct ItinStep));
-			new_step->body = NULL;
-			new_step->next = malloc(sizeof(struct ItinStep *));
-			new_step->next[0] = ptr;
-			new_step->prev = NULL;
-			new_step->had_low_perihelion = false;
-			new_step->num_next_nodes = 1;
-			
-			ptr->prev = new_step;
-			double v_inf_sq = sq_mag_vec3(subtract_vec3(ptr->v_body, ptr->next[0]->v_dep));
-			double v_inf_x = sqrt(-ptr->v_body.y*ptr->v_body.y - ptr->v_body.z*ptr->v_body.z + v_inf_sq);
-			ptr->v_arr = vec3(v_inf_x + ptr->v_body.x, 0, 0);
-			printf("angle: %f\n", rad2deg(angle_vec3_vec3(ptr->r, vec3(-200*AU, ptr->r.y, ptr->r.z))));
-			OSV new_osv = propagate_osv_ta((OSV) {ptr->r, ptr->v_arr}, ptr->body->orbit.cb,
-										   -angle_vec3_vec3(ptr->r, vec3(-200*AU, ptr->r.y, ptr->r.z)));
-			new_step->r = new_osv.r;
-			new_step->date = ptr->date - (mag_vec3(subtract_vec3(ptr->r, new_step->r))/mag_vec3(ptr->v_arr))/86400.0;
-			ptr->v_dep = new_osv.v;
-			printf("date: %f\n", ptr->date - new_step->date);
-			print_vec3(new_step->r);
-			print_vec3(ptr->v_dep);
-			
-			printf("%f   %f\n", mag_vec3(subtract_vec3(ptr->v_body, ptr->next[0]->v_dep)),
-				   mag_vec3(subtract_vec3(ptr->v_body, ptr->v_arr)));
-			printf("%f   %f\n", sqrt(v_inf_sq),
-				   sqrt(v_inf_x*v_inf_x + ptr->v_body.y*ptr->v_body.y + ptr->v_body.z*ptr->v_body.z));
-			printf("%f   %f\n",
-				   get_flyby_periapsis(ptr->v_arr, ptr->next[0]->v_dep, ptr->v_body, ptr->body)/ptr->body->radius - 1,
-				   get_flyby_periapsis(ptr->v_arr, ptr->next[0]->v_dep, ptr->v_body, ptr->body)/1e3);
-			
+			attach_initial_competition_state(ptr);
 			
 			draw_itinerary(tp_system_camera, tp_system, curr_transfer_tp, current_date_tp);
 			
 			free(ptr->prev->next);
 			free(ptr->prev);
 			ptr->prev = NULL;
+			
+//			print_itin_competition_score(get_last(ptr), tp_system);
 		} else {
 			draw_itinerary(tp_system_camera, tp_system, curr_transfer_tp, current_date_tp);
 		}
@@ -659,7 +632,7 @@ int find_closest_transfer(struct ItinStep *step) {
 	temp->next = NULL;
 	temp->prev = NULL;
 	temp->num_next_nodes = 0;
-	find_viable_flybys(temp, tp_system, step->body, 86400, 86400*365.25*50);
+	find_viable_flybys(temp, tp_system, step->body, 86400, 86400*365.25*200);
 
 	if(temp->next != NULL) {
 		struct ItinStep *new_step = temp->next[0];
@@ -770,7 +743,7 @@ G_MODULE_EXPORT void on_load_itinerary(GtkWidget* widget, gpointer data) {
 	sprintf(system_name, "- %s -", tp_system->name);
 	append_combobox_entry(GTK_COMBO_BOX(cb_tp_system), system_name);
 	update_central_body_dropdown(GTK_COMBO_BOX(cb_tp_central_body), tp_system);
-
+	
 	struct ItinStep *step2pr = get_first(curr_transfer_tp);
 	HyperbolaParams hyp_params = get_hyperbola_params(vec3(0,0,0), step2pr->next[0]->v_dep, step2pr->v_body,
 																		   step2pr->body, 200e3, HYP_DEPARTURE);
@@ -792,10 +765,10 @@ G_MODULE_EXPORT void on_load_itinerary(GtkWidget* widget, gpointer data) {
 			Vector3 v_dep = step2pr->next[0]->v_dep;
 			Vector3 v_body = step2pr->v_body;
 			double incl = get_flyby_inclination(v_arr, v_dep, v_body, get_body_equatorial_plane(step2pr->body));
-
+			
 			hyp_params = get_hyperbola_params(step2pr->v_arr, step2pr->next[0]->v_dep, step2pr->v_body, step2pr->body, 0, HYP_FLYBY);
 			double dt_in_days = step2pr->date - step2pr->prev->date;
-
+			
 			printf("\nFly-by Hyperbola %s (Travel Time: %.2f days)\n"
 				   "Date: %f\n"
 				   "RadPer: %f km\n"

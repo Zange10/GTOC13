@@ -10,7 +10,7 @@ enum FILE_TYPE {COMP_FILE_PLANET, COMP_FILE_COMET, COMP_FILE_ASTEROID};
 
 void parse_celestial_body_line(const char *line, enum FILE_TYPE type, Body *new_body) {
 	// Ignore comment or empty lines
-	if (line[0] == '#' || strlen(line) < 3)
+	if(line[0] == '#' || strlen(line) < 3)
 		return;
 	
 	if(type == COMP_FILE_PLANET) {
@@ -69,7 +69,7 @@ void parse_celestial_body_line(const char *line, enum FILE_TYPE type, Body *new_
 
 void load_competition_file(CelestSystem *system, char *filename, enum FILE_TYPE type) {
 	FILE *file = fopen(filename, "r");
-	if (!file) {
+	if(!file) {
 		perror("Failed to open file");
 		free(system);
 		return;
@@ -78,7 +78,7 @@ void load_competition_file(CelestSystem *system, char *filename, enum FILE_TYPE 
 	// skip first line
 	fgets(line, sizeof(line), file);
 	
-	while (fgets(line, sizeof(line), file)) {
+	while(fgets(line, sizeof(line), file)) {
 		Body *body = new_body();
 		parse_celestial_body_line(line, type, body);
 		body->orbit.cb = system->cb;
@@ -118,6 +118,112 @@ CelestSystem * load_competition_system(char *directory) {
 	return system;
 }
 
+struct ItinStep * attach_initial_competition_state(struct ItinStep *step) {
+	struct ItinStep *ptr = get_first(step);
+	struct ItinStep *new_step = malloc(sizeof(struct ItinStep));
+	new_step->body = NULL;
+	new_step->next = malloc(sizeof(struct ItinStep *));
+	new_step->next[0] = ptr;
+	new_step->prev = NULL;
+	new_step->had_low_perihelion = false;
+	new_step->num_next_nodes = 1;
+	ptr->prev = new_step;
+	
+	
+	double phi, kappa;
+	Vector3 v_inf_dep = subtract_vec3(ptr->next[0]->v_dep, ptr->v_body);
+	Vector3 v_inf_arr;
+	double x_error, y_error, z_error;
+	Orbit orbit_arr;
+	Orbit orbit_dep;
+	OSV osv_dep;
+	DataArray2 *x_error_data = data_array2_create();
+	DataArray2 *y_error_data = data_array2_create();
+	DataArray2 *z_error_data = data_array2_create();
+	
+	data_array2_insert_new(z_error_data, deg2rad(30), 1e20);
+	data_array2_insert_new(z_error_data, deg2rad(-30), -1e20);
+	do {
+		phi = root_finder_monot_func_next_x(z_error_data);
+		data_array2_clear(y_error_data);
+		data_array2_insert_new(y_error_data, deg2rad(30), 1e20);
+		data_array2_insert_new(y_error_data, deg2rad(-30), -1e20);
+		do {
+			kappa = root_finder_monot_func_next_x(y_error_data);
+			printf("Phi: %f    Kappa: %f\n", rad2deg(phi), rad2deg(kappa));
+			v_inf_arr = vec3(cos(phi),0,sin(phi));
+			v_inf_arr = rotate_vector_around_axis(v_inf_arr, vec3(0,0,1), kappa);
+			
+			v_inf_arr = scale_vec3(v_inf_arr, mag_vec3(v_inf_dep));
+			ptr->v_arr = add_vec3(v_inf_arr, ptr->v_body);
+			
+			orbit_arr = constr_orbit_from_osv(ptr->r, ptr->v_arr, ptr->body->orbit.cb);
+			orbit_dep = orbit_arr;
+			data_array2_clear(x_error_data);
+			data_array2_insert_new(x_error_data, orbit_dep.ta, osv_from_orbit(orbit_dep).r.x + 200*AU);
+			Orbit orbit_neg_inf = propagate_orbit_time(orbit_arr, -1e10);
+			data_array2_insert_new(x_error_data, orbit_neg_inf.ta, osv_from_orbit(orbit_neg_inf).r.x + 200*AU);
+			
+			do {
+				orbit_dep.ta = root_finder_monot_func_next_x(x_error_data);
+				osv_dep = osv_from_orbit(orbit_dep);
+				x_error = osv_dep.r.x - (-200*AU);
+				data_array2_insert_new(x_error_data, orbit_dep.ta, osv_from_orbit(orbit_dep).r.x + 200*AU);
+			} while(fabs(x_error) > 1);
+			
+			y_error = osv_dep.v.y;
+			data_array2_insert_new(y_error_data, kappa, y_error);
+		} while(fabs(y_error) > 1e-4);
+		
+		z_error = osv_dep.v.z;
+		data_array2_insert_new(z_error_data, phi, z_error);
+	} while(fabs(z_error) > 1e-4);
+	
+	data_array2_free(x_error_data);
+	data_array2_free(y_error_data);
+	data_array2_free(z_error_data);
+	
+	new_step->r = osv_from_orbit(orbit_dep).r;
+	
+	double dt = fabs(calc_orbit_time_since_periapsis(orbit_arr)-calc_orbit_time_since_periapsis(orbit_dep));
+	new_step->date = ptr->date - dt/86400.0;
+	
+	ptr->v_dep = osv_from_orbit(orbit_dep).v;
+	
+	printf("dt: %f\n", ptr->date - new_step->date);
+	print_vec3(v_inf_dep);
+	print_vec3(v_inf_arr);
+	print_vec3(new_step->r);
+	print_vec3(subtract_vec3(new_step->r,vec3(-200*AU, 0, 0)));
+	print_vec3(scale_vec3(new_step->r, 1/AU));
+	print_vec3(ptr->v_dep);
+	
+	print_vec3(subtract_vec3(propagate_osv_time(osv_dep, ptr->body->orbit.cb, dt).r, ptr->r));
+	print_vec3(subtract_vec3(propagate_osv_time(osv_from_orbit(orbit_arr), ptr->body->orbit.cb, -dt).r, osv_dep.r));
+//	print_vec3(subtract_vec3(propagate_osv_time(osv_from_orbit(orbit_arr), ptr->body->orbit.cb, -dt).v, osv_dep.v));
+//	print_vec3(propagate_osv_time(osv_from_orbit(orbit_arr), ptr->body->orbit.cb, -dt).v);
+	print_vec3(subtract_vec3(osv_from_orbit(propagate_orbit_time(propagate_orbit_time(orbit_arr, -dt), dt)).r, ptr->r));
+	print_vec3(subtract_vec3(osv_from_orbit(propagate_orbit_time(propagate_orbit_time(orbit_arr, -dt), dt)).r, ptr->r));
+	OSV temp_osv = osv_from_orbit(orbit_arr);
+	temp_osv.v = scale_vec3(temp_osv.v, -1);
+	print_vec3(subtract_vec3(propagate_osv_time(temp_osv, ptr->body->orbit.cb, dt).r, osv_dep.r));
+
+	OSV osv_arr = osv_from_orbit(orbit_arr);
+	Lambert3 solution = calc_lambert3(ptr->r, osv_arr.r, dt, ptr->body->orbit.cb);
+	
+	OSV osv_arr2 = (OSV) {solution.r0, scale_vec3(solution.v0,-1)};
+	OSV osv_dep2 = (OSV) {solution.r1, scale_vec3(solution.v1, -1)};
+	
+	print_vec3(subtract_vec3(osv_dep2.v, osv_dep.v));
+	print_vec3(subtract_vec3(osv_arr2.v, ptr->v_arr));
+	
+//
+//	print_orbit_info(orbit_dep);
+//	print_orbit_info(orbit_arr);
+	
+	return new_step;
+}
+
 typedef struct Competition_Transfer {
 	Body *body;
 	double epoch;
@@ -150,7 +256,7 @@ int get_num_comp_trans(Competition_Transfer *transfer) {
 	return num_transfer;
 }
 
-void free_competition_transfer_list(Competition_Transfer ** transfers, int num_bodies) {
+void free_competition_transfer_list(Competition_Transfer **transfers, int num_bodies) {
 	for(int i = 0; i < num_bodies; i++) {
 		Competition_Transfer *ptr = get_last_comp_trans(transfers[i]);
 		if(ptr == NULL) continue;
@@ -205,7 +311,7 @@ Competition_Transfer ** build_competition_transfer_from_itin(struct ItinStep *ar
 		
 		transfer->r = calc_heliocentric_periapsis(
 				itin_ptr->prev->r, itin_ptr->v_dep,
-				itin_ptr->r,itin_ptr->v_arr,
+				itin_ptr->r, itin_ptr->v_arr,
 				system);
 		transfer->rp = mag_vec3(transfer->r);
 		
@@ -256,13 +362,12 @@ Competition_Transfer ** build_competition_transfer_from_itin(struct ItinStep *ar
 }
 
 
-
 bool is_grand_tour() {
 	return false;
 }
 
 
-double calc_seasonal_penalty(Competition_Transfer * transfer) {
+double calc_seasonal_penalty(Competition_Transfer *transfer) {
 	double s = 0;
 	Competition_Transfer *prev_ptr = transfer->prev;
 	while(prev_ptr != NULL) {
@@ -275,12 +380,12 @@ double calc_seasonal_penalty(Competition_Transfer * transfer) {
 	return 0.1 + (0.9/(1+10*s));
 }
 
-double calc_flyby_velocity_penalty(Competition_Transfer * transfer) {
+double calc_flyby_velocity_penalty(Competition_Transfer *transfer) {
 	double v_inf = sqrt(transfer->c3)/1e3;
 	return 0.2 + exp(-v_inf/13) / (1+exp(-5*(v_inf-1.5)));;
 }
 
-double get_competition_flyby_score(Competition_Transfer * transfer) {
+double get_competition_flyby_score(Competition_Transfer *transfer) {
 	if(transfer == 0) return 0;
 	double w = transfer->body->scale_height;
 	double s = calc_seasonal_penalty(transfer);
@@ -289,7 +394,7 @@ double get_competition_flyby_score(Competition_Transfer * transfer) {
 }
 
 
-double get_competition_body_score(Competition_Transfer * transfer) {
+double get_competition_body_score(Competition_Transfer *transfer) {
 	if(transfer == 0) return 0;
 	double score = 0;
 	while(transfer != NULL) {
@@ -302,7 +407,7 @@ double get_competition_body_score(Competition_Transfer * transfer) {
 double get_itin_competition_score(struct ItinStep *arr_step, CelestSystem *system) {
 	double b = is_grand_tour() ? 1.2 : 1;
 	
-	Competition_Transfer ** transfers = build_competition_transfer_from_itin(arr_step, system);
+	Competition_Transfer **transfers = build_competition_transfer_from_itin(arr_step, system);
 	
 	double score = 0;
 	Competition_Transfer *ptr;
@@ -326,7 +431,10 @@ double get_itin_competition_score(struct ItinStep *arr_step, CelestSystem *syste
 		ptr = transfers[i];
 		while(ptr != NULL) {
 			if(ptr->rp > 0) {
-				if(ptr->rp/ptr->body->radius-1 < 0.1 || ptr->rp/ptr->body->radius-1 > 100) { free_competition_transfer_list(transfers, 3000); return 0; }
+				if(ptr->rp/ptr->body->radius - 1 < 0.1 || ptr->rp/ptr->body->radius - 1 > 100) {
+					free_competition_transfer_list(transfers, 3000);
+					return 0;
+				}
 			}
 			ptr = ptr->next;
 		}
@@ -340,7 +448,7 @@ double get_itin_competition_score(struct ItinStep *arr_step, CelestSystem *syste
 void print_itin_competition_score(struct ItinStep *arr_step, CelestSystem *system) {
 	double b = is_grand_tour() ? 1.2 : 1;
 	
-	Competition_Transfer ** transfers = build_competition_transfer_from_itin(arr_step, system);
+	Competition_Transfer **transfers = build_competition_transfer_from_itin(arr_step, system);
 	
 	double score = 0;
 	Competition_Transfer *ptr;
@@ -365,8 +473,10 @@ void print_itin_competition_score(struct ItinStep *arr_step, CelestSystem *syste
 	for(int i = 1; i < 3000; i++) {
 		ptr = transfers[i];
 		while(ptr != NULL) {
-			printf("%s  %f  %f  %f  | %f  s:%f  f:%f  w:%f |\n", ptr->body->name, mag_vec3(ptr->r)/AU, sqrt(ptr->c3), ptr->rp/ptr->body->radius-1,
-				   get_competition_flyby_score(ptr), calc_seasonal_penalty(ptr), calc_flyby_velocity_penalty(ptr), ptr->body->scale_height);
+			printf("%s  %f  %f  %f  | %f  s:%f  f:%f  w:%f |\n",
+				   ptr->body->name, mag_vec3(ptr->r)/AU, sqrt(ptr->c3), ptr->rp/ptr->body->radius-1,
+				   get_competition_flyby_score(ptr), calc_seasonal_penalty(ptr), calc_flyby_velocity_penalty(ptr),
+				   ptr->body->scale_height);
 			ptr = ptr->next;
 		}
 		if(transfers[i] != NULL) printf("%s:  %f\n", transfers[i]->body->name, get_competition_body_score(transfers[i]));
@@ -395,7 +505,6 @@ void print_itin_competition_score(struct ItinStep *arr_step, CelestSystem *syste
 	}
 	
 	
-	
 	printf("--\n");
 	printf("SCORE: %f\n", score);
 	printf("--\n");
@@ -408,7 +517,7 @@ void run_competition_calc(char *load_filename, char *store_filename, CelestSyste
 	struct Itin_Calc_Results ic_results;
 	
 	FILE *file = fopen(load_filename, "r");
-	if (!file) {
+	if(!file) {
 		perror("Failed to open file");
 		return;
 	}
@@ -498,7 +607,8 @@ void run_competition_calc(char *load_filename, char *store_filename, CelestSyste
 	
 	
 	if(ic_results.departures == NULL || ic_results.num_deps == 0) return;
-	store_itineraries_in_bfile(ic_results.departures, ic_results.num_nodes, ic_results.num_deps, ic_results.num_itins, calc_data, system, store_filename, get_current_bin_file_type());
+	store_itineraries_in_bfile(ic_results.departures, ic_results.num_nodes, ic_results.num_deps, ic_results.num_itins,
+							   calc_data, system, store_filename, get_current_bin_file_type());
 	for(int i = 0; i < ic_results.num_deps; i++) free_itinerary(ic_results.departures[i]);
 	free(ic_results.departures);
 	free(fly_by_bodies);
@@ -506,81 +616,81 @@ void run_competition_calc(char *load_filename, char *store_filename, CelestSyste
 }
 
 void store_competition_flyby_arc_arrival(FILE *file, struct ItinStep *step) {
-	Vector3 r = scale_vec3(step->r,1e-3);
-	Vector3 v = scale_vec3(step->v_arr,1e-3);
+	Vector3 r = scale_vec3(step->r, 1e-3);
+	Vector3 v = scale_vec3(step->v_arr, 1e-3);
 	Vector3 v_inf = subtract_vec3(v, scale_vec3(step->v_body, 1e-3));
 	fprintf(file,
 			"%d, "		// body_id: unique identifier for the body
 			"%d, "		// flag: status or type flag
 			"%lf, "		// epoch: seconds since reference epoch
-			"%.9lf, "		// pos_x: position in X-axis (km)
-			"%.9lf, "		// pos_y: position in Y-axis (km)
-			"%.9lf, "		// pos_z: position in Z-axis (km)
-			"%.9lf, "		// vel_x: velocity along X-axis (km/s)
-			"%.9lf, "		// vel_y: velocity along Y-axis (km/s)
-			"%.9lf, "		// vel_z: velocity along Z-axis (km/s)
-			"%.9lf, "		// control_x: control input along X-axis
-			"%.9lf, "		// control_y: control input along Y-axis
+			"%.9lf, "	// pos_x: position in X-axis (km)
+			"%.9lf, "	// pos_y: position in Y-axis (km)
+			"%.9lf, "	// pos_z: position in Z-axis (km)
+			"%.12lf, "	// vel_x: velocity along X-axis (km/s)
+			"%.12lf, "	// vel_y: velocity along Y-axis (km/s)
+			"%.12lf, "	// vel_z: velocity along Z-axis (km/s)
+			"%.9lf, "	// control_x: control input along X-axis
+			"%.9lf, "	// control_y: control input along Y-axis
 			"%.9lf\n",	// control_z: control input along Z-axis
-			step->body->id, 1, step->date*86400, r.x, r.y, r.z, v.x, v.y, v.z, v_inf.x, v_inf.y, v_inf.z
+			step->body->id, 0, step->date*86400, r.x, r.y, r.z, v.x, v.y, v.z, v_inf.x, v_inf.y, v_inf.z
 	);
 }
 
 void store_competition_flyby_arc_departure(FILE *file, struct ItinStep *step0) {
 	if(step0 == NULL || step0->next == NULL) return;
 	struct ItinStep *step1 = step0->next[0];
-	Vector3 r = scale_vec3(step0->r,1e-3);
-	Vector3 v = scale_vec3(step1->v_dep,1e-3);
+	Vector3 r = scale_vec3(step0->r, 1e-3);
+	Vector3 v = scale_vec3(step1->v_dep, 1e-3);
 	Vector3 v_inf = subtract_vec3(v, scale_vec3(step0->v_body, 1e-3));
 	fprintf(file,
 			"%d, "		// body_id: unique identifier for the body
 			"%d, "		// flag: status or type flag
 			"%lf, "		// epoch: seconds since reference epoch
-			"%.9lf, "		// pos_x: position in X-axis (km)
-			"%.9lf, "		// pos_y: position in Y-axis (km)
-			"%.9lf, "		// pos_z: position in Z-axis (km)
-			"%.9lf, "		// vel_x: velocity along X-axis (km/s)
-			"%.9lf, "		// vel_y: velocity along Y-axis (km/s)
-			"%.9lf, "		// vel_z: velocity along Z-axis (km/s)
-			"%.9lf, "		// control_x: control input along X-axis
-			"%.9lf, "		// control_y: control input along Y-axis
+			"%.9lf, "	// pos_x: position in X-axis (km)
+			"%.9lf, "	// pos_y: position in Y-axis (km)
+			"%.9lf, "	// pos_z: position in Z-axis (km)
+			"%.12lf, "	// vel_x: velocity along X-axis (km/s)
+			"%.12lf, "	// vel_y: velocity along Y-axis (km/s)
+			"%.12lf, "	// vel_z: velocity along Z-axis (km/s)
+			"%.9lf, "	// control_x: control input along X-axis
+			"%.9lf, "	// control_y: control input along Y-axis
 			"%.9lf\n",	// control_z: control input along Z-axis
-			step0->body->id, 1, step0->date*86400, r.x, r.y, r.z, v.x, v.y, v.z, v_inf.x, v_inf.y, v_inf.z
+			step0->body->id, 0, step0->date*86400, r.x, r.y, r.z, v.x, v.y, v.z, v_inf.x, v_inf.y, v_inf.z
 	);
 }
 
 void store_competition_conic_arc(FILE *file, struct ItinStep *step0) {
 	if(step0 == NULL || step0->next == NULL) return;
 	struct ItinStep *step1 = step0->next[0];
-	Vector3 r = scale_vec3(step0->r,1e-3);
-	Vector3 v = scale_vec3(step1->v_dep,1e-3);
+	Vector3 r = scale_vec3(step0->r, 1e-3);
+	Vector3 v = scale_vec3(step1->v_dep, 1e-3);
 	fprintf(file,
 			"%d, "		// body_id: unique identifier for the body
 			"%d, "		// flag: status or type flag
 			"%lf, "		// epoch: seconds since reference epoch
-			"%.9lf, "		// pos_x: position in X-axis (km)
-			"%.9lf, "		// pos_y: position in Y-axis (km)
-			"%.9lf, "		// pos_z: position in Z-axis (km)
-			"%.9lf, "		// vel_x: velocity along X-axis (km/s)
-			"%.9lf, "		// vel_y: velocity along Y-axis (km/s)
-			"%.9lf, "		// vel_z: velocity along Z-axis (km/s)
+			"%.9lf, "	// pos_x: position in X-axis (km)
+			"%.9lf, "	// pos_y: position in Y-axis (km)
+			"%.9lf, "	// pos_z: position in Z-axis (km)
+			"%.12lf, "	// vel_x: velocity along X-axis (km/s)
+			"%.12lf, "	// vel_y: velocity along Y-axis (km/s)
+			"%.12lf, "	// vel_z: velocity along Z-axis (km/s)
 			"%lf, "		// control_x: control input along X-axis
 			"%lf, "		// control_y: control input along Y-axis
 			"%lf\n",	// control_z: control input along Z-axis
 			0, 0, step0->date*86400, r.x, r.y, r.z, v.x, v.y, v.z, 0.0, 0.0, 0.0
 	);
-	r = scale_vec3(step1->r,1e-3);
-	v = scale_vec3(step1->v_arr,1e-3);
+	r = scale_vec3(step1->r, 1e-3);
+	v = scale_vec3(step1->v_arr, 1e-3);
 	fprintf(file,
 			"%d, "		// body_id: unique identifier for the body
 			"%d, "		// flag: status or type flag
 			"%lf, "		// epoch: time or timestamp (e.g., seconds since reference epoch)
-			"%lf, "		// pos_x: position in X-axis (km)
-			"%lf, "		// pos_y: position in Y-axis (km)
-			"%lf, "		// pos_z: position in Z-axis (km)
-			"%lf, "		// vel_x: velocity along X-axis (km/s)
-			"%lf, "		// vel_y: velocity along Y-axis (km/s)
-			"%lf, "		// vel_z: velocity along Z-axis (km/s)
+			"%.9lf, "	// pos_x: position in X-axis (km)
+			"%.9lf, "	// pos_y: position in Y-axis (km)
+			"%.9lf, "	// pos_z: position in Z-axis (km)
+			"%.12lf, "	// vel_x: velocity along X-axis (km/s)
+			"%.12lf, "	// vel_y: velocity along Y-axis (km/s)
+			"%.12lf, "	// vel_z: velocity along Z-axis (km/s)
 			"%lf, "		// control_x: control input along X-axis
 			"%lf, "		// control_y: control input along Y-axis
 			"%lf\n",	// control_z: control input along Z-axis
@@ -592,15 +702,20 @@ void store_competition_solution(char *filepath, struct ItinStep *step) {
 	step = get_first(step);
 	
 	// Check if the string ends with ".itin"
-	if (strlen(filepath) >= 3 && strcmp(filepath + strlen(filepath) - 4, ".csv") != 0) {
+	if(strlen(filepath) >= 3 && strcmp(filepath + strlen(filepath) - 4, ".csv") != 0) {
 		// If not, append ".itin" to the string
 		strcat(filepath, ".csv");
 	}
 	
 	FILE *file;
-	file = fopen(filepath,"w");
+	file = fopen(filepath, "w");
 	
-	fprintf(file,"#body_id, flag, epoch, pos_x, pos_y, pos_z, vel_x, vel_y, vel_z, control_x, control_y, control_z\n");
+	fprintf(file, "#body_id, flag, epoch, pos_x, pos_y, pos_z, vel_x, vel_y, vel_z, control_x, control_y, control_z\n");
+	
+	step = attach_initial_competition_state(step);
+	store_competition_conic_arc(file, step);
+	step = step->next[0];
+	
 	while(step->next != NULL) {
 		if(step->prev != NULL) store_competition_flyby_arc_arrival(file, step);
 		store_competition_flyby_arc_departure(file, step);
@@ -608,6 +723,11 @@ void store_competition_solution(char *filepath, struct ItinStep *step) {
 		step = step->next[0];
 	}
 	store_competition_flyby_arc_arrival(file, step);
+	
+	step = get_first(step)->next[0];
+	free(step->prev->next);
+	free(step->prev);
+	step->prev = NULL;
 	
 	fclose(file);
 }

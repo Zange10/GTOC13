@@ -79,7 +79,7 @@ void find_viable_flybys(struct ItinStep *tf, CelestSystem *system, Body *next_bo
 			Vector3 v_dep = subtract_vec3(new_transfer.v0, tf->v_body);
 			diff_vinf = mag_vec3(v_dep) - mag_vec3(v_init);
 
-			if(fabs(diff_vinf) < 1) {
+			if(fabs(diff_vinf) < 1e-4) {
 				double rp_flyby = get_flyby_periapsis(tf->v_arr, new_transfer.v0, tf->v_body, tf->body);
 				if(rp_flyby/tf->body->radius - 1 > 0.1 && rp_flyby/tf->body->radius - 1 < 100) {
 					Vector3 rp_heliocentric = calc_heliocentric_periapsis(new_transfer.r0, new_transfer.v0, new_transfer.r1, new_transfer.v1, system);
